@@ -318,8 +318,11 @@ def find_transform(
     # matches_list is a list of lists such that for each element
     # source_invariant_tree.data[i], matches_list[i] is a list of the indices
     # of its neighbors in target_invariant_tree.data
+    # 0.03 is a value from the legacy astroalign that works empirically for 
+    # projective transforms
+    r = 0.03 if ttype == 'projective' else 0.1
     matches_list = source_invariant_tree.query_ball_tree(
-        target_invariant_tree, r=0.1
+        target_invariant_tree, r=r
     )
 
     # matches unravels the previous list of matches into pairs of source and
@@ -543,7 +546,6 @@ def _find_sources(img, detection_sigma=5, min_area=5):
 class MaxIterError(RuntimeError):
     pass
 
-
 def _ransac(data, model, min_data_points, thresh, min_matches):
     """fit model parameters to data using the RANSAC algorithm
 
@@ -563,7 +565,6 @@ def _ransac(data, model, min_data_points, thresh, min_matches):
     n_data = data.shape[0]
     all_idxs = _np.arange(n_data)
     _np.random.shuffle(all_idxs)
-
     for iter_i in range(n_data-min_data_points+1):
         # Partition indices into two random subsets
         maybe_idxs = all_idxs[iter_i : iter_i + min_data_points]
