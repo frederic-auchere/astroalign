@@ -232,6 +232,10 @@ def find_transform(
     the source image s = (x, y) into the target (destination) image t = (x, y).
     If a SimilarityTransform, T contains parameters of the tranformation:
     ``T.rotation``, ``T.translation``, ``T.scale``, ``T.params``.
+    The search for a projective transform is implemented by setting the 
+    minimum number of data points for the Ransac algorithm to be 3 (triangles)
+    instead of 1 (for a similarity transform). Ideally one would need to look
+    for siimlar quadrangles upstream in the process
 
     Args:
         source (array-like): Either a NumPy, CCData or NDData array of the
@@ -330,18 +334,18 @@ def find_transform(
             matches.append(list(zip(t1, t2)))
     matches = _np.array(matches)
 
-    inv_model = _MatchTransform(source_controlp, target_controlp)
+    inv_model = _MatchTransform(source_controlp, target_controlp, ttype=ttype)
     n_invariants = len(matches)
     # Set the minimum matches to be between 1 and 10 asterisms
     min_matches = max(1, min(10, int(n_invariants * MIN_MATCHES_FRACTION)))
     if ttype == 'projective':
-        min_data_points = 3
+        min_data_points = 3  # Three triangles
     elif ttype == 'similarity':
-        min_data_points = 1
+        min_data_points = 1  # One triangle
     else:
         raise ValueError('Invalid transform type')
     if (len(source_controlp) == 3 or len(target_controlp) == 3) and len(
-        matches
+        matches and ttype == 'similarity'
     ) == 1:
         best_t = inv_model.fit(matches)
         inlier_ind = _np.arange(len(matches))  # All of the indices
