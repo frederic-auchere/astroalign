@@ -167,13 +167,15 @@ def _generate_invariants(sources):
 
 
 class _MatchTransform:
-    def __init__(self, source, target):
+    def __init__(self, source, target, ttype='similarity'):
         self.source = source
         self.target = target
+        self.ttype = ttype
 
     def fit(self, data):
         """
-        Return the best 2D similarity transform from the points given in data.
+        Return the best 2D transform (similarity or projective) from the
+        points given in data.
 
         data: N sets of similar corresponding triangles.
             3 indices for a triangle in ref
@@ -183,7 +185,7 @@ class _MatchTransform:
         d1, d2, d3 = data.shape
         s, d = data.reshape(d1 * d2, d3).T
         approx_t = estimate_transform(
-            "similarity", self.source[s], self.target[d]
+            self.ttype, self.source[s], self.target[d]
         )
         return approx_t
 
@@ -220,14 +222,16 @@ def _shape(image):
 
 
 def find_transform(
-    source, target, max_control_points=50, detection_sigma=5, min_area=5
+    source, target, max_control_points=50, detection_sigma=5, min_area=5,
+    ttype='similarity'
 ):
     """Estimate the transform between ``source`` and ``target``.
 
-    Return a SimilarityTransform object ``T`` that maps pixel x, y indices from
+    Return a SimilarityTransform of ProjectiveTransform object ``T`` 
+    (depending on the ttype keyword) that maps pixel x, y indices from
     the source image s = (x, y) into the target (destination) image t = (x, y).
-    T contains parameters of the tranformation: ``T.rotation``,
-    ``T.translation``, ``T.scale``, ``T.params``.
+    If a SimilarityTransform, T contains parameters of the tranformation:
+    ``T.rotation``, ``T.translation``, ``T.scale``, ``T.params``.
 
     Args:
         source (array-like): Either a NumPy, CCData or NDData array of the
@@ -242,6 +246,10 @@ def find_transform(
             a detection. This value is ignored if input are not images.
         min_area: Minimum number of connected pixels to be considered a source.
             This value is ignored if input are not images.
+        ttype: either 'similarity' or 'projective'. A similarity transform
+            combines rotation, translation and scaling. A projective transform
+            is a homography that represents the generic transformation between
+            two pinhole cameras.
 
     Returns:
         The transformation object and a tuple of corresponding star positions
@@ -326,6 +334,12 @@ def find_transform(
     n_invariants = len(matches)
     # Set the minimum matches to be between 1 and 10 asterisms
     min_matches = max(1, min(10, int(n_invariants * MIN_MATCHES_FRACTION)))
+    if ttype == 'projective':
+        min_data_points = 3
+    elif ttype == 'similarity':
+        min_data_points = 1
+    else:
+        raise ValueError('Invalid transform type')
     if (len(source_controlp) == 3 or len(target_controlp) == 3) and len(
         matches
     ) == 1:
@@ -333,7 +347,7 @@ def find_transform(
         inlier_ind = _np.arange(len(matches))  # All of the indices
     else:
         best_t, inlier_ind = _ransac(
-            matches, inv_model, PIXEL_TOL, min_matches
+            matches, inv_model, min_data_points, PIXEL_TOL, min_matches
         )
     triangle_inliers = matches[inlier_ind]
     d1, d2, d3 = triangle_inliers.shape
@@ -526,7 +540,7 @@ class MaxIterError(RuntimeError):
     pass
 
 
-def _ransac(data, model, thresh, min_matches):
+def _ransac(data, model, min_data_points, thresh, min_matches):
     """fit model parameters to data using the RANSAC algorithm
 
     This implementation written from pseudocode found at
@@ -546,11 +560,11 @@ def _ransac(data, model, thresh, min_matches):
     all_idxs = _np.arange(n_data)
     _np.random.shuffle(all_idxs)
 
-    for iter_i in range(n_data):
+    for iter_i in range(n_data-min_data_points+1):
         # Partition indices into two random subsets
-        maybe_idxs = all_idxs[iter_i : iter_i + 1]
+        maybe_idxs = all_idxs[iter_i : iter_i + min_data_points]
         test_idxs = list(all_idxs[:iter_i])
-        test_idxs.extend(list(all_idxs[iter_i + 1 :]))
+        test_idxs.extend(list(all_idxs[iter_i + min_data_points:]))
         test_idxs = _np.array(test_idxs)
         maybeinliers = data[maybe_idxs, :]
         test_points = data[test_idxs, :]
